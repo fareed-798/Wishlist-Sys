@@ -1,0 +1,229 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Wishlist System</title>
+
+  <style>
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #f1f5f9;
+      color: #1e293b;
+    }
+
+    main {
+      max-width: 720px;
+      margin: 45px auto;
+      padding: 25px;
+    }
+
+    .panel {
+      background: white;
+      padding: 28px;
+      border-radius: 14px;
+      box-shadow: 0 5px 20px #00000012;
+    }
+
+    h1 { color: #4338ca; }
+
+    input, textarea, button {
+      width: 100%;
+      padding: 12px;
+      margin: 9px 0;
+      font-size: 16px;
+      border-radius: 7px;
+    }
+
+    input, textarea {
+      border: 1px solid #cbd5e1;
+    }
+
+    button {
+      border: 0;
+      background: #4338ca;
+      color: white;
+      cursor: pointer;
+    }
+
+    .item {
+      border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      padding: 14px;
+      margin: 12px 0;
+      overflow-wrap: anywhere;
+    }
+
+    #message {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .muted { color: #64748b; }
+  </style>
+</head>
+
+<body>
+<main>
+  <div class="panel">
+    <h1>My Wishlist</h1>
+    <p class="muted">Wishlist Management System</p>
+
+    <p id="version">Checking application version...</p>
+    <section id="content"></section>
+    <p id="message" role="status"></p>
+  </div>
+</main>
+
+<script>
+  const content = document.getElementById("content");
+  const message = document.getElementById("message");
+  const versionLabel = document.getElementById("version");
+
+  async function request(url, options = {}) {
+    const response = await fetch(url, options);
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || "Request failed");
+    }
+
+    return data;
+  }
+
+  function showMessage(text) {
+    message.textContent = text;
+  }
+
+  async function initialize() {
+    try {
+      const health = await request("/health");
+      versionLabel.textContent =
+        "Running version: " + health.version;
+
+      if (health.version === "v1") {
+        content.innerHTML = `
+          <h2>Add an item</h2>
+          <form id="addForm">
+            <input name="name" placeholder="Item name" required>
+            <textarea name="details"
+              placeholder="Item details" required></textarea>
+            <button type="submit">Save to Wishlist</button>
+          </form>
+        `;
+
+        document.getElementById("addForm")
+          .addEventListener("submit", async event => {
+            event.preventDefault();
+            const form = event.currentTarget;
+
+            try {
+              const result = await request("/wishlist", {
+                method: "POST",
+                headers: {
+                  "Content-Type": "application/json"
+                },
+                body: JSON.stringify({
+                  name: form.elements.name.value,
+                  details: form.elements.details.value
+                })
+              });
+
+              showMessage(
+                result.message + ". Item ID: " + result.item.id
+              );
+              form.reset();
+            } catch (error) {
+              showMessage(error.message);
+            }
+          });
+
+      } else if (health.version === "v2") {
+        content.innerHTML = `
+          <h2>Remove an item</h2>
+          <p>Enter the ID of an item saved in version 1.</p>
+          <form id="removeForm">
+            <input name="id" type="number" min="1"
+              placeholder="Wishlist item ID" required>
+            <button type="submit">Remove Item</button>
+          </form>
+        `;
+
+        document.getElementById("removeForm")
+          .addEventListener("submit", async event => {
+            event.preventDefault();
+            const id = event.currentTarget.elements.id.value;
+
+            try {
+              const result = await request(
+                "/wishlist/" + encodeURIComponent(id),
+                { method: "DELETE" }
+              );
+
+              showMessage(result.message);
+              event.currentTarget.reset();
+            } catch (error) {
+              showMessage(error.message);
+            }
+          });
+
+      } else if (health.version === "v3") {
+        content.innerHTML = `
+          <h2>Saved wishlist items</h2>
+          <button id="refresh">View Wishlist</button>
+          <div id="items"></div>
+        `;
+
+        document.getElementById("refresh")
+          .addEventListener("click", displayItems);
+
+        await displayItems();
+      }
+    } catch (error) {
+      showMessage("Could not connect to the application: " + error.message);
+    }
+  }
+
+  async function displayItems() {
+    const container = document.getElementById("items");
+
+    try {
+      const result = await request("/wishlist");
+      container.replaceChildren();
+
+      if (result.wishlist.length === 0) {
+        container.textContent = "Your wishlist is empty.";
+        return;
+      }
+
+      result.wishlist.forEach(item => {
+        const card = document.createElement("article");
+        card.className = "item";
+
+        const title = document.createElement("h3");
+        title.textContent = item.name;
+
+        const details = document.createElement("p");
+        details.textContent = item.details;
+
+        const id = document.createElement("p");
+        id.textContent = "Item ID: " + item.id;
+
+        card.append(title, details, id);
+        container.appendChild(card);
+      });
+
+      showMessage("Total items: " + result.count);
+    } catch (error) {
+      showMessage(error.message);
+    }
+  }
+
+  initialize();
+</script>
+</body>
+</html>
